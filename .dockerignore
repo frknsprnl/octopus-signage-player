@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.git/
+.env
+docker/mosquitto/data/
+docker/mosquitto/log/
+*.log
+*.wgt
