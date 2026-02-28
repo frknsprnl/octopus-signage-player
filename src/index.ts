@@ -1,8 +1,13 @@
 import { config } from './config';
 import { MqttConnection } from './infrastructure/mqtt/MqttConnection';
+import { CommandStream } from './web/CommandStream';
+import { startWebServer } from './web/server';
 
 async function bootstrap(): Promise<void> {
   console.log(`[player] starting — device: ${config.device.id}, env: ${config.nodeEnv}`);
+
+  const commandStream = new CommandStream();
+  startWebServer(commandStream);
 
   const mqtt = new MqttConnection({
     brokerUrl: config.mqtt.brokerUrl,
@@ -27,6 +32,7 @@ async function bootstrap(): Promise<void> {
 
   mqtt.on('command', (cmd) => {
     console.log(`[mqtt] command received — ${cmd.command} (correlationId: ${cmd.correlationId})`);
+    commandStream.push(cmd);
   });
 
   mqtt.on('error', (err) => {
