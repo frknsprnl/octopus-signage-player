@@ -1,0 +1,16 @@
+{
+  "name": "octopus-signage-mock-server",
+  "version": "1.0.0",
+  "description": "Mock servers for local development — playlist HTTP + MQTT command publisher",
+  "private": true,
+  "scripts": {
+    "playlist": "node playlist-mock-server.js",
+    "mqtt": "node mqtt-command-publisher.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.3"
+  }
+}
