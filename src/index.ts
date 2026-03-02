@@ -1,8 +1,9 @@
 import { config } from './config';
-import { MqttConnection } from './infrastructure/mqtt/MqttConnection';
+import { createMqttConnection } from './infrastructure/mqtt/MqttConnectionFactory';
 import { CommandStream } from './web/CommandStream';
 import { startWebServer } from './web/server';
 import { PlaylistService } from './services/PlaylistService';
+import { CommandHandler } from './handlers/CommandHandler';
 
 async function bootstrap(): Promise<void> {
   console.log(`[player] starting — device: ${config.device.id}, env: ${config.nodeEnv}`);
@@ -18,17 +19,12 @@ async function bootstrap(): Promise<void> {
     console.warn(`[playlist] fetch error — ${err.message}, retrying…`);
   });
 
-  startWebServer(commandStream, playlistService);
+  const mqtt = createMqttConnection();
+  const commandHandler = new CommandHandler(mqtt, playlistService, commandStream);
+
+  startWebServer(commandStream, playlistService, (event) => mqtt.publishEvent(event));
 
   void playlistService.fetch();
-
-  const mqtt = new MqttConnection({
-    brokerUrl: config.mqtt.brokerUrl,
-    clientId: config.mqtt.clientId,
-    username: config.mqtt.username,
-    password: config.mqtt.password,
-    deviceId: config.device.id,
-  });
 
   mqtt.on('connected', () => {
     console.log(`[mqtt] connected — broker: ${config.mqtt.brokerUrl}`);
@@ -44,12 +40,7 @@ async function bootstrap(): Promise<void> {
   });
 
   mqtt.on('command', (cmd) => {
-    console.log(`[mqtt] command received — ${cmd.command} (correlationId: ${cmd.correlationId})`);
-    commandStream.push(cmd);
-
-    if (cmd.command === 'reload_playlist') {
-      void playlistService.fetch();
-    }
+    void commandHandler.handle(cmd);
   });
 
   mqtt.on('error', (err) => {

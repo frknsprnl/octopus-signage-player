@@ -2,14 +2,18 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import type { CommandStream } from './CommandStream';
 import type { PlaylistService } from '../services/PlaylistService';
+import type { OutgoingEvent } from '../infrastructure/mqtt/types';
 
 const PORT = Number(process.env['WEB_PORT'] ?? 8080);
 
 export function createWebServer(
   stream: CommandStream,
   playlistService: PlaylistService,
+  publishEvent: (event: OutgoingEvent) => void,
 ): { app: express.Express; port: number } {
   const app = express();
+
+  app.use(express.json());
 
   app.get('/', (_req: Request, res: Response) => {
     res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
@@ -17,6 +21,26 @@ export function createWebServer(
 
   app.get('/api/playlist', (_req: Request, res: Response) => {
     res.json({ playlist: playlistService.playlist });
+  });
+
+  app.get('/api/commands', (_req: Request, res: Response) => {
+    res.json(stream.getRecent());
+  });
+
+  /**
+   * Browser-side komutların (play/pause/set_volume/screenshot) sonuçlarını
+   * alır ve MQTT events topic'ine yayar.
+   */
+  app.post('/api/ack', (req: Request, res: Response) => {
+    const event = req.body as OutgoingEvent;
+
+    if (!event?.type || !event?.status) {
+      res.status(400).json({ error: 'Missing type or status' });
+      return;
+    }
+
+    publishEvent(event);
+    res.status(204).end();
   });
 
   app.get('/events', (req: Request, res: Response) => {
@@ -33,15 +57,15 @@ export function createWebServer(
     req.on('close', () => unsubscribe());
   });
 
-  app.get('/api/commands', (_req: Request, res: Response) => {
-    res.json(stream.getRecent());
-  });
-
   return { app, port: PORT };
 }
 
-export function startWebServer(stream: CommandStream, playlistService: PlaylistService): void {
-  const { app, port } = createWebServer(stream, playlistService);
+export function startWebServer(
+  stream: CommandStream,
+  playlistService: PlaylistService,
+  publishEvent: (event: OutgoingEvent) => void,
+): void {
+  const { app, port } = createWebServer(stream, playlistService, publishEvent);
   app.listen(port, () => {
     console.log(`[web] UI: http://localhost:${port}`);
   });

@@ -12,8 +12,6 @@ const BACKOFF_MAX_MS = 30_000;
 const BACKOFF_MULTIPLIER = 2;
 const CONNECT_TIMEOUT_MS = 10_000;
 
-// Small random jitter to prevent multiple devices from reconnecting simultaneously
-const jitter = (): number => Math.floor(Math.random() * 500);
 
 export interface MqttConnectionEvents {
   connected: () => void;
@@ -147,7 +145,7 @@ export class MqttConnection extends EventEmitter {
     if (this.destroyed) return;
 
     const base = BACKOFF_BASE_MS * Math.pow(BACKOFF_MULTIPLIER, this.reconnectAttempts);
-    const delayMs = Math.min(base, BACKOFF_MAX_MS) + jitter();
+    const delayMs = Math.min(base, BACKOFF_MAX_MS);
 
     this.reconnectAttempts++;
     this.emit('reconnecting', { attempt: this.reconnectAttempts, delayMs });

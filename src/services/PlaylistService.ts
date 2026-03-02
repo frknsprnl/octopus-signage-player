@@ -3,7 +3,7 @@ import { EventEmitter } from 'events';
 export interface PlaylistItem {
   type: 'image' | 'video';
   url: string;
-  duration?: number; // saniye cinsinden; yalnızca görsel için kullanılır
+  duration?: number; // saniye — yalnızca görseller için
 }
 
 export declare interface PlaylistService {
@@ -32,9 +32,10 @@ export class PlaylistService extends EventEmitter {
     return [...this.items];
   }
 
-  async fetch(): Promise<void> {
+  /** Başarılıysa true döner, hata olursa retry planlanır ve false döner. */
+  async fetch(): Promise<boolean> {
     this.clearRetry();
-    if (this.destroyed) return;
+    if (this.destroyed) return false;
 
     try {
       const res = await fetch(this.endpoint, {
@@ -47,9 +48,11 @@ export class PlaylistService extends EventEmitter {
       this.items = Array.isArray(data.playlist) ? data.playlist : [];
       this.retryDelay = RETRY_BASE_MS;
       this.emit('updated', this.items);
+      return true;
     } catch (err) {
       this.emit('error', err instanceof Error ? err : new Error(String(err)));
       this.scheduleRetry();
+      return false;
     }
   }
 

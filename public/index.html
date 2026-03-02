@@ -29,7 +29,7 @@
       font-size: 11px;
       padding: 4px 8px;
       border-radius: 4px;
-      max-width: 340px;
+      max-width: 360px;
       word-break: break-all;
       pointer-events: none;
     }
@@ -49,6 +49,11 @@
       height: 100%;
       width: 0%;
       background: rgba(74, 222, 128, 0.9);
+      transition: background 0.3s;
+    }
+
+    #progress-fill.paused {
+      background: rgba(250, 204, 21, 0.9);
     }
   </style>
 </head>
@@ -78,14 +83,21 @@
     var currentLabel = '';
     var slideStartMs = 0;
     var slideDurationMs = 0;
+    var isPaused = false;
+    var pausedElapsedMs = 0;
 
     function setStatus(text) {
       statusText.textContent = text;
     }
 
-    function setProgress(pct) {
+    function setProgress(pct, paused) {
       var p = Math.max(0, Math.min(100, pct));
       progressFill.style.width = p + '%';
+      if (paused) {
+        progressFill.classList.add('paused');
+      } else {
+        progressFill.classList.remove('paused');
+      }
     }
 
     function formatRemaining(ms) {
@@ -93,11 +105,6 @@
       var m = Math.floor(totalSec / 60);
       var s = totalSec % 60;
       return (m > 0 ? (m + ':') : '') + String(s).padStart(2, '0');
-    }
-
-    function clearProgressTimer() {
-      if (progressTimer !== null) { clearInterval(progressTimer); progressTimer = null; }
-      setProgress(0);
     }
 
     function saveToStorage(items) {
@@ -133,6 +140,41 @@
         });
     }
 
+    // Komut sonucunu sunucuya bildirir; sunucu MQTT'e yayar
+    function postAck(event) {
+      fetch('/api/ack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event),
+      }).catch(function() {});
+    }
+
+    function ackOk(cmd, payload) {
+      var event = {
+        type: 'command_result',
+        command: cmd.command,
+        correlationId: cmd.correlationId,
+        status: 'success',
+      };
+      if (payload) event.payload = payload;
+      postAck(event);
+    }
+
+    function ackErr(cmd, code, message) {
+      postAck({
+        type: 'command_result',
+        command: cmd.command,
+        correlationId: cmd.correlationId,
+        status: 'error',
+        error: { code: code, message: message },
+      });
+    }
+
+    function clearProgressTimer() {
+      if (progressTimer !== null) { clearInterval(progressTimer); progressTimer = null; }
+      setProgress(0, false);
+    }
+
     function clearSlide() {
       if (slideTimer !== null) { clearTimeout(slideTimer); slideTimer = null; }
       clearProgressTimer();
@@ -143,9 +185,12 @@
       vidEl.onerror = null;
       if (!vidEl.paused) vidEl.pause();
       vidEl.style.display = 'none';
+      isPaused = false;
+      pausedElapsedMs = 0;
     }
 
     function next() {
+      if (isPaused) return;
       if (playlist.length === 0) return;
       currentIndex = (currentIndex + 1) % playlist.length;
       playItem(currentIndex);
@@ -155,37 +200,54 @@
       try { return new URL(url).pathname.split('/').pop() || url; } catch (_) { return url; }
     }
 
-    function playItem(index) {
-      if (playlist.length === 0) return;
-      clearSlide();
-      var item = playlist[index];
-      currentLabel = (index + 1) + '/' + playlist.length + '  ' + shortName(item.url);
+    function startImageProgressTimer() {
+      clearProgressTimer();
+      progressTimer = setInterval(function() {
+        if (isPaused) return;
+        var elapsed = Date.now() - slideStartMs;
+        var remaining = Math.max(0, slideDurationMs - elapsed);
+        setProgress((elapsed / slideDurationMs) * 100, false);
+        setStatus(currentLabel + '  |  ' + formatRemaining(remaining));
+      }, 250);
+    }
 
-      if (item.type === 'image') {
+    function startVideoProgressTimer() {
+      clearProgressTimer();
+      progressTimer = setInterval(function() {
+        var d = vidEl.duration;
+        var t = vidEl.currentTime;
+        if (!isFinite(d) || d <= 0) {
+          setProgress(0, isPaused);
+          setStatus(currentLabel + '  |  --:--');
+          return;
+        }
+        var remainingMs = Math.max(0, (d - t) * 1000);
+        setProgress((t / d) * 100, isPaused);
+        setStatus(currentLabel + '  |  ' + formatRemaining(remainingMs) + (isPaused ? '  ⏸' : ''));
+      }, 250);
+    }
+
+    // Her medya tipi için render fonksiyonu; yeni tip eklemek için buraya giriş yeterli
+    var renderers = {
+      image: function(item) {
         imgEl.style.display = 'block';
         imgEl.onerror = function() {
-          setStatus('[!] Görsel yüklenemedi — atlanıyor');
+          setStatus('[!] Image failed to load — skipping');
           slideTimer = setTimeout(next, 2000);
         };
         imgEl.onload = function() {
           slideStartMs = Date.now();
           slideDurationMs = (item.duration != null ? item.duration * 1000 : DEFAULT_DURATION_MS);
           slideTimer = setTimeout(next, slideDurationMs);
-
-          progressTimer = setInterval(function() {
-            var elapsed = Date.now() - slideStartMs;
-            var remaining = Math.max(0, slideDurationMs - elapsed);
-            var pct = (elapsed / slideDurationMs) * 100;
-            setProgress(pct);
-            setStatus(currentLabel + '  |  ' + formatRemaining(remaining));
-          }, 250);
+          startImageProgressTimer();
         };
         imgEl.src = item.url;
+      },
 
-      } else if (item.type === 'video') {
+      video: function(item) {
         vidEl.style.display = 'block';
         vidEl.onerror = function() {
-          setStatus('[!] Video yüklenemedi — atlanıyor');
+          setStatus('[!] Video failed to load — skipping');
           slideTimer = setTimeout(next, 2000);
         };
         vidEl.onended = function() { next(); };
@@ -194,26 +256,23 @@
         var p = vidEl.play();
         if (p !== undefined) {
           p.catch(function() {
-            setStatus('[!] Video oynatılamadı — atlanıyor');
+            setStatus('[!] Video playback failed — skipping');
             slideTimer = setTimeout(next, 2000);
           });
         }
-        progressTimer = setInterval(function() {
-          var d = vidEl.duration;
-          var t = vidEl.currentTime;
-          if (!isFinite(d) || d <= 0) {
-            setProgress(0);
-            setStatus(currentLabel + '  |  --:--');
-            return;
-          }
-          var remainingMs = Math.max(0, (d - t) * 1000);
-          setProgress((t / d) * 100);
-          setStatus(currentLabel + '  |  ' + formatRemaining(remainingMs));
-        }, 250);
+        startVideoProgressTimer();
+      },
+    };
 
-      } else {
-        next();
-      }
+    function playItem(index) {
+      if (playlist.length === 0) return;
+      clearSlide();
+      var item = playlist[index];
+      currentLabel = (index + 1) + '/' + playlist.length + '  ' + shortName(item.url);
+
+      var renderer = renderers[item.type];
+      if (!renderer) { next(); return; }
+      renderer(item);
     }
 
     function startPlayback(items, resetIndex) {
@@ -227,9 +286,9 @@
 
       if (!isReload && cached && cached.length > 0) {
         startPlayback(cached, true);
-        setStatus('Liste güncelleniyor…');
+        setStatus('Checking for updates…');
       } else if (!isReload) {
-        setStatus('Playlist yükleniyor…');
+        setStatus('Loading playlist…');
       }
 
       fetchFromServer().then(function(serverItems) {
@@ -242,25 +301,147 @@
         }
 
         if (cached && cached.length > 0) {
-          setStatus('Offline — önbellek kullanılıyor');
+          setStatus('Offline — using cached playlist');
           if (!isReload) startPlayback(cached, true);
           return;
         }
 
-        setStatus('Playlist bulunamadı — 5 sn sonra tekrar denenecek…');
+        setStatus('No playlist found — retrying in 5s…');
         setTimeout(function() { loadAndPlay(false); }, 5000);
       });
     }
 
-    // SSE: reload_playlist komutu gelince yeniden yükle
-    var es = new EventSource('/events');
-    es.onmessage = function(e) {
-      try {
-        var cmd = JSON.parse(e.data);
-        if (cmd.command === 'reload_playlist') {
-          loadAndPlay(true);
+    function cmdPlay(cmd) {
+      if (!isPaused) { ackOk(cmd); return; }
+      isPaused = false;
+
+      var isVideo = vidEl.style.display !== 'none';
+      var isImage = imgEl.style.display !== 'none';
+
+      if (isVideo) {
+        var p = vidEl.play();
+        if (p !== undefined) {
+          p.then(function() { ackOk(cmd); }).catch(function(e) { ackErr(cmd, 'PLAY_FAILED', e.message); });
+        } else {
+          ackOk(cmd);
         }
-      } catch (_) {}
+      } else if (isImage) {
+        slideStartMs = Date.now() - pausedElapsedMs;
+        var remaining = Math.max(100, slideDurationMs - pausedElapsedMs);
+        slideTimer = setTimeout(next, remaining);
+        startImageProgressTimer();
+        pausedElapsedMs = 0;
+        ackOk(cmd);
+      } else {
+        ackOk(cmd);
+      }
+    }
+
+    function cmdPause(cmd) {
+      if (isPaused) { ackOk(cmd); return; }
+      isPaused = true;
+
+      var isVideo = vidEl.style.display !== 'none';
+      var isImage = imgEl.style.display !== 'none';
+
+      if (isVideo) {
+        vidEl.pause();
+        ackOk(cmd);
+      } else if (isImage) {
+        pausedElapsedMs = Date.now() - slideStartMs;
+        if (slideTimer !== null) { clearTimeout(slideTimer); slideTimer = null; }
+        clearProgressTimer();
+        setStatus(currentLabel + '  ⏸');
+        ackOk(cmd);
+      } else {
+        ackOk(cmd);
+      }
+    }
+
+    function cmdSetVolume(cmd) {
+      var raw = cmd.payload && typeof cmd.payload.volume === 'number' ? cmd.payload.volume : null;
+      if (raw === null || raw < 0 || raw > 100) {
+        ackErr(cmd, 'INVALID_VOLUME', 'Volume must be a number between 0 and 100 (received: ' + raw + ')');
+        return;
+      }
+      var normalized = raw > 1 ? raw / 100 : raw;
+      vidEl.volume = normalized;
+      ackOk(cmd, { volume: normalized, volumePct: Math.round(normalized * 100) });
+    }
+
+    function cmdScreenshot(cmd) {
+      var isVideo = vidEl.style.display !== 'none';
+      var isImage = imgEl.style.display !== 'none';
+
+      if (!isVideo && !isImage) {
+        ackErr(cmd, 'SCREENSHOT_FAILED', 'No media is currently visible on screen');
+        return;
+      }
+
+      if (isVideo && vidEl.readyState < 2) {
+        ackErr(cmd, 'SCREENSHOT_FAILED', 'Video is not ready yet (readyState=' + vidEl.readyState + ')');
+        return;
+      }
+
+      if (isImage && !imgEl.complete) {
+        ackErr(cmd, 'SCREENSHOT_FAILED', 'Image has not finished loading');
+        return;
+      }
+
+      var currentUrl = isVideo ? vidEl.src : imgEl.src;
+      var mediaType = isVideo ? 'video' : 'image';
+
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        var ctx = canvas.getContext('2d');
+
+        if (isVideo) {
+          ctx.drawImage(vidEl, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+        }
+
+        var base64 = canvas.toDataURL('image/png').split(',')[1];
+        ackOk(cmd, { format: 'image/png', base64: base64 });
+      } catch (e) {
+        var isTainted = e.message && e.message.toLowerCase().indexOf('tainted') !== -1;
+        var reason = isTainted
+          ? 'Cross-origin ' + mediaType + ' cannot be captured due to browser security policy (CORS). URL: ' + currentUrl
+          : (e.message || 'Unknown canvas error');
+        ackErr(cmd, 'SCREENSHOT_FAILED', reason);
+      }
+    }
+
+    function cmdRestart() {
+      clearSlide();
+      playlist = [];
+      currentIndex = 0;
+      loadAndPlay(false);
+    }
+
+    function handleCommand(cmd) {
+      console.log('[player] command:', cmd.command, cmd.correlationId);
+      switch (cmd.command) {
+        case 'reload_playlist': loadAndPlay(true);  break;
+        case 'restart_player':  cmdRestart();       break;
+        case 'play':            cmdPlay(cmd);       break;
+        case 'pause':           cmdPause(cmd);      break;
+        case 'set_volume':      cmdSetVolume(cmd);  break;
+        case 'screenshot':      cmdScreenshot(cmd); break;
+      }
+    }
+
+    var es = new EventSource('/events');
+    es.onopen = function() {
+      console.log('[player] SSE connected');
+    };
+    es.onmessage = function(e) {
+      try { handleCommand(JSON.parse(e.data)); } catch (_) {}
+    };
+    es.onerror = function() {
+      console.warn('[player] SSE error, will retry automatically');
     };
 
     loadAndPlay(false);
