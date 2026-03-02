@@ -2,12 +2,25 @@ import { config } from './config';
 import { MqttConnection } from './infrastructure/mqtt/MqttConnection';
 import { CommandStream } from './web/CommandStream';
 import { startWebServer } from './web/server';
+import { PlaylistService } from './services/PlaylistService';
 
 async function bootstrap(): Promise<void> {
   console.log(`[player] starting — device: ${config.device.id}, env: ${config.nodeEnv}`);
 
   const commandStream = new CommandStream();
-  startWebServer(commandStream);
+  const playlistService = new PlaylistService(config.playlist.endpoint);
+
+  playlistService.on('updated', (items) => {
+    console.log(`[playlist] updated — ${items.length} item(s) loaded`);
+  });
+
+  playlistService.on('error', (err) => {
+    console.warn(`[playlist] fetch error — ${err.message}, retrying…`);
+  });
+
+  startWebServer(commandStream, playlistService);
+
+  void playlistService.fetch();
 
   const mqtt = new MqttConnection({
     brokerUrl: config.mqtt.brokerUrl,
@@ -33,6 +46,10 @@ async function bootstrap(): Promise<void> {
   mqtt.on('command', (cmd) => {
     console.log(`[mqtt] command received — ${cmd.command} (correlationId: ${cmd.correlationId})`);
     commandStream.push(cmd);
+
+    if (cmd.command === 'reload_playlist') {
+      void playlistService.fetch();
+    }
   });
 
   mqtt.on('error', (err) => {
@@ -44,6 +61,7 @@ async function bootstrap(): Promise<void> {
   const shutdown = (): void => {
     console.log('\n[player] shutting down...');
     mqtt.destroy();
+    playlistService.destroy();
     process.exit(0);
   };
 

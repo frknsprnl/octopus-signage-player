@@ -3,101 +3,267 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MQTT Komutları</title>
+  <title>Signage Player</title>
   <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: system-ui, sans-serif;
-      max-width: 640px;
-      margin: 0 auto;
-      padding: 1rem;
-      background: #1a1a1a;
-      color: #e0e0e0;
-      min-height: 100vh;
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+
+    #player { width: 100vw; height: 100vh; position: relative; }
+
+    #img-el, #vid-el {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
     }
-    h1 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
+
+    #status-bar {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.6);
+      color: #ccc;
+      font-family: monospace;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      max-width: 340px;
+      word-break: break-all;
+      pointer-events: none;
     }
-    .status {
-      font-size: 0.85rem;
-      color: #888;
-      margin-bottom: 1rem;
+
+    #status-text { display: block; }
+
+    #progress {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 4px;
     }
-    .status.connected { color: #4ade80; }
-    .status.error { color: #f87171; }
-    ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
+
+    #progress-fill {
+      height: 100%;
+      width: 0%;
+      background: rgba(74, 222, 128, 0.9);
     }
-    li {
-      padding: 0.6rem 0.75rem;
-      margin-bottom: 0.35rem;
-      background: #2a2a2a;
-      border-radius: 6px;
-      font-size: 0.9rem;
-      border-left: 3px solid #4ade80;
-    }
-    li time { color: #888; font-size: 0.8rem; }
-    li .cmd { font-weight: 600; }
-    li .correlation { color: #a78bfa; font-family: monospace; font-size: 0.8rem; }
-    .empty { color: #666; text-align: center; padding: 2rem; }
   </style>
 </head>
 <body>
-  <h1>MQTT Komutları</h1>
-  <p class="status" id="status">Bağlanıyor…</p>
-  <ul id="list"></ul>
-  <p class="empty" id="empty">Henüz komut gelmedi.</p>
+  <div id="player">
+    <img id="img-el" alt="">
+    <video id="vid-el" muted playsinline></video>
+  </div>
+  <div id="status-bar">
+    <span id="status-text"></span>
+    <div id="progress"><div id="progress-fill"></div></div>
+  </div>
 
   <script>
-    const list = document.getElementById('list');
-    const empty = document.getElementById('empty');
-    const statusEl = document.getElementById('status');
+    var LS_KEY = 'octopus:playlist';
+    var DEFAULT_DURATION_MS = 10000;
 
-    function addCommand(cmd) {
-      empty.style.display = 'none';
-      const li = document.createElement('li');
-      const date = new Date(cmd.timestamp);
-      li.innerHTML = [
-        '<span class="cmd">' + escapeHtml(cmd.command) + '</span>',
-        '<br><span class="correlation">' + escapeHtml(cmd.correlationId) + '</span>',
-        ' <time>' + date.toLocaleTimeString('tr-TR') + '</time>',
-        cmd.payload && Object.keys(cmd.payload).length ? '<br><small>' + escapeHtml(JSON.stringify(cmd.payload)) + '</small>' : ''
-      ].join('');
-      list.insertBefore(li, list.firstChild);
+    var imgEl = document.getElementById('img-el');
+    var vidEl = document.getElementById('vid-el');
+    var statusText = document.getElementById('status-text');
+    var progressFill = document.getElementById('progress-fill');
+
+    var playlist = [];
+    var currentIndex = 0;
+    var slideTimer = null;
+    var progressTimer = null;
+    var currentLabel = '';
+    var slideStartMs = 0;
+    var slideDurationMs = 0;
+
+    function setStatus(text) {
+      statusText.textContent = text;
     }
 
-    function escapeHtml(s) {
-      const div = document.createElement('div');
-      div.textContent = s;
-      return div.innerHTML;
+    function setProgress(pct) {
+      var p = Math.max(0, Math.min(100, pct));
+      progressFill.style.width = p + '%';
     }
 
-    fetch('/api/commands')
-      .then(r => r.json())
-      .then(commands => {
-        if (commands.length) empty.style.display = 'none';
-        commands.forEach(addCommand);
-      })
-      .catch(() => {});
+    function formatRemaining(ms) {
+      var totalSec = Math.max(0, Math.floor(ms / 1000));
+      var m = Math.floor(totalSec / 60);
+      var s = totalSec % 60;
+      return (m > 0 ? (m + ':') : '') + String(s).padStart(2, '0');
+    }
 
-    const es = new EventSource('/events');
-    es.onopen = () => {
-      statusEl.textContent = 'Canlı bağlantı açık.';
-      statusEl.className = 'status connected';
-    };
-    es.onmessage = (e) => {
+    function clearProgressTimer() {
+      if (progressTimer !== null) { clearInterval(progressTimer); progressTimer = null; }
+      setProgress(0);
+    }
+
+    function saveToStorage(items) {
+      try { localStorage.setItem(LS_KEY, JSON.stringify(items)); } catch (_) {}
+    }
+
+    function loadFromStorage() {
       try {
-        addCommand(JSON.parse(e.data));
+        var raw = localStorage.getItem(LS_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (_) {}
+      return null;
+    }
+
+    function playlistsEqual(a, b) {
+      if (!a || !b || a.length !== b.length) return false;
+      return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    function fetchFromServer() {
+      return fetch('/api/playlist')
+        .then(function(res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(function(data) {
+          if (Array.isArray(data.playlist) && data.playlist.length > 0) return data.playlist;
+          return null;
+        })
+        .catch(function(err) {
+          console.warn('[player] playlist fetch failed:', err.message);
+          return null;
+        });
+    }
+
+    function clearSlide() {
+      if (slideTimer !== null) { clearTimeout(slideTimer); slideTimer = null; }
+      clearProgressTimer();
+      imgEl.onload = null;
+      imgEl.onerror = null;
+      imgEl.style.display = 'none';
+      vidEl.onended = null;
+      vidEl.onerror = null;
+      if (!vidEl.paused) vidEl.pause();
+      vidEl.style.display = 'none';
+    }
+
+    function next() {
+      if (playlist.length === 0) return;
+      currentIndex = (currentIndex + 1) % playlist.length;
+      playItem(currentIndex);
+    }
+
+    function shortName(url) {
+      try { return new URL(url).pathname.split('/').pop() || url; } catch (_) { return url; }
+    }
+
+    function playItem(index) {
+      if (playlist.length === 0) return;
+      clearSlide();
+      var item = playlist[index];
+      currentLabel = (index + 1) + '/' + playlist.length + '  ' + shortName(item.url);
+
+      if (item.type === 'image') {
+        imgEl.style.display = 'block';
+        imgEl.onerror = function() {
+          setStatus('[!] Görsel yüklenemedi — atlanıyor');
+          slideTimer = setTimeout(next, 2000);
+        };
+        imgEl.onload = function() {
+          slideStartMs = Date.now();
+          slideDurationMs = (item.duration != null ? item.duration * 1000 : DEFAULT_DURATION_MS);
+          slideTimer = setTimeout(next, slideDurationMs);
+
+          progressTimer = setInterval(function() {
+            var elapsed = Date.now() - slideStartMs;
+            var remaining = Math.max(0, slideDurationMs - elapsed);
+            var pct = (elapsed / slideDurationMs) * 100;
+            setProgress(pct);
+            setStatus(currentLabel + '  |  ' + formatRemaining(remaining));
+          }, 250);
+        };
+        imgEl.src = item.url;
+
+      } else if (item.type === 'video') {
+        vidEl.style.display = 'block';
+        vidEl.onerror = function() {
+          setStatus('[!] Video yüklenemedi — atlanıyor');
+          slideTimer = setTimeout(next, 2000);
+        };
+        vidEl.onended = function() { next(); };
+        vidEl.src = item.url;
+        vidEl.load();
+        var p = vidEl.play();
+        if (p !== undefined) {
+          p.catch(function() {
+            setStatus('[!] Video oynatılamadı — atlanıyor');
+            slideTimer = setTimeout(next, 2000);
+          });
+        }
+        progressTimer = setInterval(function() {
+          var d = vidEl.duration;
+          var t = vidEl.currentTime;
+          if (!isFinite(d) || d <= 0) {
+            setProgress(0);
+            setStatus(currentLabel + '  |  --:--');
+            return;
+          }
+          var remainingMs = Math.max(0, (d - t) * 1000);
+          setProgress((t / d) * 100);
+          setStatus(currentLabel + '  |  ' + formatRemaining(remainingMs));
+        }, 250);
+
+      } else {
+        next();
+      }
+    }
+
+    function startPlayback(items, resetIndex) {
+      playlist = items;
+      if (resetIndex) currentIndex = 0;
+      playItem(currentIndex);
+    }
+
+    function loadAndPlay(isReload) {
+      var cached = loadFromStorage();
+
+      if (!isReload && cached && cached.length > 0) {
+        startPlayback(cached, true);
+        setStatus('Liste güncelleniyor…');
+      } else if (!isReload) {
+        setStatus('Playlist yükleniyor…');
+      }
+
+      fetchFromServer().then(function(serverItems) {
+        if (serverItems) {
+          if (!playlistsEqual(serverItems, cached)) {
+            saveToStorage(serverItems);
+            startPlayback(serverItems, true);
+          }
+          return;
+        }
+
+        if (cached && cached.length > 0) {
+          setStatus('Offline — önbellek kullanılıyor');
+          if (!isReload) startPlayback(cached, true);
+          return;
+        }
+
+        setStatus('Playlist bulunamadı — 5 sn sonra tekrar denenecek…');
+        setTimeout(function() { loadAndPlay(false); }, 5000);
+      });
+    }
+
+    // SSE: reload_playlist komutu gelince yeniden yükle
+    var es = new EventSource('/events');
+    es.onmessage = function(e) {
+      try {
+        var cmd = JSON.parse(e.data);
+        if (cmd.command === 'reload_playlist') {
+          loadAndPlay(true);
+        }
       } catch (_) {}
     };
-    es.onerror = () => {
-      statusEl.textContent = 'SSE bağlantı hatası. Yeniden denenecek.';
-      statusEl.className = 'status error';
-    };
+
+    loadAndPlay(false);
   </script>
 </body>
 </html>

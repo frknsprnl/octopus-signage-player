@@ -1,14 +1,22 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import type { CommandStream } from './CommandStream';
+import type { PlaylistService } from '../services/PlaylistService';
 
 const PORT = Number(process.env['WEB_PORT'] ?? 8080);
 
-export function createWebServer(stream: CommandStream): { app: express.Express; port: number } {
+export function createWebServer(
+  stream: CommandStream,
+  playlistService: PlaylistService,
+): { app: express.Express; port: number } {
   const app = express();
 
   app.get('/', (_req: Request, res: Response) => {
     res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
+  });
+
+  app.get('/api/playlist', (_req: Request, res: Response) => {
+    res.json({ playlist: playlistService.playlist });
   });
 
   app.get('/events', (req: Request, res: Response) => {
@@ -32,8 +40,8 @@ export function createWebServer(stream: CommandStream): { app: express.Express; 
   return { app, port: PORT };
 }
 
-export function startWebServer(stream: CommandStream): void {
-  const { app, port } = createWebServer(stream);
+export function startWebServer(stream: CommandStream, playlistService: PlaylistService): void {
+  const { app, port } = createWebServer(stream, playlistService);
   app.listen(port, () => {
     console.log(`[web] UI: http://localhost:${port}`);
   });
