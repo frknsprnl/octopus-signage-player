@@ -20,3 +20,16 @@ export interface IPlaylistRepository {
 export interface ICommandBus {
   push(cmd: IncomingCommand): void;
 }
+
+/** Uygulama konfigürasyonu; testte mock, production'da env-based adapter kullanılır. */
+export interface IConfigProvider {
+  getNodeEnv(): string;
+  getDeviceId(): string;
+  getPlaylistEndpoint(): string;
+  getMqttBrokerUrl(): string;
+  getMqttClientId(): string;
+  getMqttUsername(): string | undefined;
+  getMqttPassword(): string | undefined;
+  getLogLevel(): string;
+  getPlatformType(): 'browser' | 'tizen';
+}

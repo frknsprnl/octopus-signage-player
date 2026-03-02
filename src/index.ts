@@ -1,4 +1,4 @@
-import { config } from './config';
+import { EnvConfigAdapter } from './config/EnvConfigAdapter';
 import { createMqttConnection } from './infrastructure/mqtt/MqttConnectionFactory';
 import { createPlatformAdapter } from './platform/PlatformAdapterFactory';
 import { CommandStream } from './web/CommandStream';
@@ -8,11 +8,12 @@ import { CommandHandler } from './handlers/CommandHandler';
 import { logger } from './infrastructure/logger/Logger';
 
 async function bootstrap(): Promise<void> {
-  const platform = createPlatformAdapter(config.platform.type);
-  logger.info(`player starting — device: ${config.device.id}, env: ${config.nodeEnv}, platform: ${platform.name}`);
+  const cfg = new EnvConfigAdapter();
+  const platform = createPlatformAdapter(cfg.getPlatformType());
+  logger.info(`player starting — device: ${cfg.getDeviceId()}, env: ${cfg.getNodeEnv()}, platform: ${platform.name}`);
 
   const commandStream = new CommandStream();
-  const playlistService = new PlaylistService(config.playlist.endpoint);
+  const playlistService = new PlaylistService(cfg.getPlaylistEndpoint());
 
   playlistService.on('updated', (items) => {
     logger.info(`playlist updated — ${items.length} item(s) loaded`);
@@ -22,7 +23,7 @@ async function bootstrap(): Promise<void> {
     logger.warn(`playlist fetch error — ${err.message}, retrying…`);
   });
 
-  const mqtt = createMqttConnection();
+  const mqtt = createMqttConnection(cfg);
   const commandHandler = new CommandHandler(mqtt, playlistService, commandStream);
 
   startWebServer(commandStream, playlistService, (event) => mqtt.publishEvent(event));
@@ -30,7 +31,7 @@ async function bootstrap(): Promise<void> {
   void playlistService.fetch();
 
   mqtt.on('connected', () => {
-    logger.info(`mqtt connected — broker: ${config.mqtt.brokerUrl}`);
+    logger.info(`mqtt connected — broker: ${cfg.getMqttBrokerUrl()}`);
     logger.info(`mqtt subscribed to: ${mqtt.topics.commands}`);
   });
 
