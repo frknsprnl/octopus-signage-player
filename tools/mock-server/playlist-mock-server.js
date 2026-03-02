@@ -3,23 +3,21 @@ const http = require('http');
 const playlist = {
   playlist: [
     {
-      type: 'image',
-      url: 'https://picsum.photos/seed/banner1/1920/1080',
-      duration: 10,
-    },
-    {
       type: 'video',
-      url: 'https://assets.mixkit.co/videos/6652/6652-720.mp4',
+      url: 'https://videos.pexels.com/video-files/33909042/14390221_1920_1080_60fps.mp4',
     },
     {
       type: 'image',
-      url: 'https://picsum.photos/seed/banner2/1920/1080',
+      url: 'https://octopussignage.com/wp-content/uploads/2024/12/DSC01412_square.jpg',
       duration: 5,
     },
     {
-      type: 'image',
-      url: 'https://picsum.photos/seed/banner3/1920/1080',
-      duration: 8,
+      type: 'video',
+      url: 'https://videos.pexels.com/video-files/5548361/5548361-uhd_2560_1440_25fps.mp4',
+    },
+    {
+      type: 'video',
+      url: 'https://videos.pexels.com/video-files/5548082/5548082-uhd_2560_1440_25fps.mp4',
     },
   ],
 };

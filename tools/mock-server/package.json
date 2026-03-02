@@ -4,13 +4,12 @@
   "description": "Mock servers for local development — playlist HTTP + MQTT command publisher",
   "private": true,
   "scripts": {
-    "playlist": "node playlist-mock-server.js",
-    "mqtt": "node mqtt-command-publisher.js"
+    "start": "node playlist-mock-server.js"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "mqtt": "^5.10.3"
+    "mqtt": "^5.15.0"
   }
 }

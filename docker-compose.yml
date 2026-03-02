@@ -11,6 +11,17 @@ services:
       - mosquitto-log:/mosquitto/log
     restart: unless-stopped
 
+  mock-server:
+    image: node:20-alpine
+    container_name: signage-mock-server
+    working_dir: /app
+    volumes:
+      - ./tools/mock-server:/app
+    command: npm start
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
   player:
     build:
       context: .
@@ -19,11 +30,16 @@ services:
     env_file: .env
     environment:
       - MQTT_BROKER_URL=mqtt://mosquitto:1883
+      - PLAYLIST_ENDPOINT=http://mock-server:3000/playlist
+      - WEB_PORT=8080
+    ports:
+      - "8080:8080"
     volumes:
       - .:/app
       - /app/node_modules
     depends_on:
       - mosquitto
+      - mock-server
     restart: unless-stopped
 
 volumes:
