@@ -4,19 +4,20 @@ import { CommandStream } from './web/CommandStream';
 import { startWebServer } from './web/server';
 import { PlaylistService } from './services/PlaylistService';
 import { CommandHandler } from './handlers/CommandHandler';
+import { logger } from './infrastructure/logger/Logger';
 
 async function bootstrap(): Promise<void> {
-  console.log(`[player] starting — device: ${config.device.id}, env: ${config.nodeEnv}`);
+  logger.info(`player starting — device: ${config.device.id}, env: ${config.nodeEnv}`);
 
   const commandStream = new CommandStream();
   const playlistService = new PlaylistService(config.playlist.endpoint);
 
   playlistService.on('updated', (items) => {
-    console.log(`[playlist] updated — ${items.length} item(s) loaded`);
+    logger.info(`playlist updated — ${items.length} item(s) loaded`);
   });
 
   playlistService.on('error', (err) => {
-    console.warn(`[playlist] fetch error — ${err.message}, retrying…`);
+    logger.warn(`playlist fetch error — ${err.message}, retrying…`);
   });
 
   const mqtt = createMqttConnection();
@@ -27,16 +28,16 @@ async function bootstrap(): Promise<void> {
   void playlistService.fetch();
 
   mqtt.on('connected', () => {
-    console.log(`[mqtt] connected — broker: ${config.mqtt.brokerUrl}`);
-    console.log(`[mqtt] subscribed to: ${mqtt.topics.commands}`);
+    logger.info(`mqtt connected — broker: ${config.mqtt.brokerUrl}`);
+    logger.info(`mqtt subscribed to: ${mqtt.topics.commands}`);
   });
 
   mqtt.on('disconnected', () => {
-    console.warn('[mqtt] disconnected');
+    logger.warn('mqtt disconnected');
   });
 
   mqtt.on('reconnecting', ({ attempt, delayMs }) => {
-    console.warn(`[mqtt] reconnecting — attempt ${attempt}, next try in ${delayMs}ms`);
+    logger.warn(`mqtt reconnecting — attempt ${attempt}, next try in ${delayMs}ms`);
   });
 
   mqtt.on('command', (cmd) => {
@@ -44,13 +45,13 @@ async function bootstrap(): Promise<void> {
   });
 
   mqtt.on('error', (err) => {
-    console.error('[mqtt] error —', err.message);
+    logger.error(`mqtt error — ${err.message}`);
   });
 
   mqtt.connect();
 
   const shutdown = (): void => {
-    console.log('\n[player] shutting down...');
+    logger.info('player shutting down…');
     mqtt.destroy();
     playlistService.destroy();
     process.exit(0);
@@ -61,6 +62,7 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((err: unknown) => {
-  console.error('[player] fatal error during bootstrap:', err);
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[error] fatal error during bootstrap: ${message}`);
   process.exit(1);
 });
