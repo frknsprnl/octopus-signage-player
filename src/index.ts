@@ -1,5 +1,6 @@
 import { config } from './config';
 import { createMqttConnection } from './infrastructure/mqtt/MqttConnectionFactory';
+import { createPlatformAdapter } from './platform/PlatformAdapterFactory';
 import { CommandStream } from './web/CommandStream';
 import { startWebServer } from './web/server';
 import { PlaylistService } from './services/PlaylistService';
@@ -7,7 +8,8 @@ import { CommandHandler } from './handlers/CommandHandler';
 import { logger } from './infrastructure/logger/Logger';
 
 async function bootstrap(): Promise<void> {
-  logger.info(`player starting — device: ${config.device.id}, env: ${config.nodeEnv}`);
+  const platform = createPlatformAdapter(config.platform.type);
+  logger.info(`player starting — device: ${config.device.id}, env: ${config.nodeEnv}, platform: ${platform.name}`);
 
   const commandStream = new CommandStream();
   const playlistService = new PlaylistService(config.playlist.endpoint);

@@ -19,4 +19,9 @@ export const config = {
   log: {
     level: process.env['LOG_LEVEL'] ?? 'info',
   },
+
+  platform: {
+    /** 'browser' | 'tizen' — Tizen stub henüz implement edilmemiş */
+    type: (process.env['PLATFORM'] ?? 'browser') as 'browser' | 'tizen',
+  },
 } as const;
