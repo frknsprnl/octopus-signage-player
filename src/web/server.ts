@@ -6,14 +6,26 @@ import type { OutgoingEvent } from '../infrastructure/mqtt/types';
 
 const PORT = Number(process.env['WEB_PORT'] ?? 8080);
 
+/** Monitoring için minimal durum bilgisi */
+export interface HealthStatus {
+  mqttConnected: boolean;
+  playlistItemCount: number;
+  lastPlaylistError?: string;
+}
+
 export function createWebServer(
   stream: CommandStream,
   playlistService: PlaylistService,
   publishEvent: (event: OutgoingEvent) => void,
+  getHealthStatus: () => HealthStatus,
 ): { app: express.Express; port: number } {
   const app = express();
 
   app.use(express.json());
+
+  app.get('/api/health', (_req: Request, res: Response) => {
+    res.json(getHealthStatus());
+  });
 
   app.get('/', (_req: Request, res: Response) => {
     res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
@@ -64,8 +76,9 @@ export function startWebServer(
   stream: CommandStream,
   playlistService: PlaylistService,
   publishEvent: (event: OutgoingEvent) => void,
+  getHealthStatus: () => HealthStatus,
 ): void {
-  const { app, port } = createWebServer(stream, playlistService, publishEvent);
+  const { app, port } = createWebServer(stream, playlistService, publishEvent, getHealthStatus);
   app.listen(port, () => {
     console.log(`[web] UI: http://localhost:${port}`);
   });

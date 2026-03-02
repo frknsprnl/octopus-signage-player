@@ -2,7 +2,7 @@ import { EnvConfigAdapter } from './config/EnvConfigAdapter';
 import { createMqttConnection } from './infrastructure/mqtt/MqttConnectionFactory';
 import { createPlatformAdapter } from './platform/PlatformAdapterFactory';
 import { CommandStream } from './web/CommandStream';
-import { startWebServer } from './web/server';
+import { startWebServer, type HealthStatus } from './web/server';
 import { PlaylistService } from './services/PlaylistService';
 import { CommandHandler } from './handlers/CommandHandler';
 import { logger } from './infrastructure/logger/Logger';
@@ -15,27 +15,42 @@ async function bootstrap(): Promise<void> {
   const commandStream = new CommandStream();
   const playlistService = new PlaylistService(cfg.getPlaylistEndpoint());
 
+  const health: { mqttConnected: boolean; playlistItemCount: number; lastPlaylistError?: string } = {
+    mqttConnected: false,
+    playlistItemCount: 0,
+  };
+  const getHealthStatus = (): HealthStatus => ({
+    mqttConnected: health.mqttConnected,
+    playlistItemCount: health.playlistItemCount,
+    ...(health.lastPlaylistError && { lastPlaylistError: health.lastPlaylistError }),
+  });
+
   playlistService.on('updated', (items) => {
+    health.playlistItemCount = items.length;
+    health.lastPlaylistError = undefined;
     logger.info(`playlist updated — ${items.length} item(s) loaded`);
   });
 
   playlistService.on('error', (err) => {
+    health.lastPlaylistError = err.message;
     logger.warn(`playlist fetch error — ${err.message}, retrying…`);
   });
 
   const mqtt = createMqttConnection(cfg);
   const commandHandler = new CommandHandler(mqtt, playlistService, commandStream);
 
-  startWebServer(commandStream, playlistService, (event) => mqtt.publishEvent(event));
+  startWebServer(commandStream, playlistService, (event) => mqtt.publishEvent(event), getHealthStatus);
 
   void playlistService.fetch();
 
   mqtt.on('connected', () => {
+    health.mqttConnected = true;
     logger.info(`mqtt connected — broker: ${cfg.getMqttBrokerUrl()}`);
     logger.info(`mqtt subscribed to: ${mqtt.topics.commands}`);
   });
 
   mqtt.on('disconnected', () => {
+    health.mqttConnected = false;
     logger.warn('mqtt disconnected');
   });
 
