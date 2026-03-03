@@ -11,7 +11,9 @@ export class EnvConfigAdapter implements IConfigProvider {
   }
 
   getPlaylistEndpoint(): string {
-    return process.env['PLAYLIST_ENDPOINT'] ?? 'http://localhost:3000/playlist';
+    // Set edilmezse kendi /api/content-source'undan okur.
+    const port = process.env['WEB_PORT'] ?? '8080';
+    return process.env['PLAYLIST_ENDPOINT'] ?? `http://localhost:${port}/api/content-source`;
   }
 
   getMqttBrokerUrl(): string {

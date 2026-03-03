@@ -11,9 +11,11 @@ services:
       - mosquitto-log:/mosquitto/log
     restart: unless-stopped
 
+  # Opsiyonel harici playlist servisi. Açmak için: docker compose --profile dev up
   mock-server:
     image: node:20-alpine
     container_name: signage-mock-server
+    profiles: [dev]
     working_dir: /app
     volumes:
       - ./tools/mock-server:/app
@@ -30,7 +32,7 @@ services:
     env_file: .env
     environment:
       - MQTT_BROKER_URL=mqtt://mosquitto:1883
-      - PLAYLIST_ENDPOINT=http://mock-server:3000/playlist
+      # Harici kaynak için: PLAYLIST_ENDPOINT=http://mock-server:3000/playlist
       - WEB_PORT=8080
     ports:
       - "8080:8080"
@@ -39,7 +41,6 @@ services:
       - /app/node_modules
     depends_on:
       - mosquitto
-      - mock-server
     restart: unless-stopped
 
 volumes:

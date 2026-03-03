@@ -21,10 +21,43 @@ export function createWebServer(
 ): { app: express.Express; port: number } {
   const app = express();
 
+  // Tizen Web App'ın farklı origin'den (wgt://) istek atabilmesi için CORS gerekli
+  app.use((_req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    next();
+  });
+
   app.use(express.json());
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json(getHealthStatus());
+  });
+
+  // Örnek içerik listesi; prod'da gerçek CMS URL'i PLAYLIST_ENDPOINT env'i ile set edilir.
+  app.get('/api/content-source', (_req: Request, res: Response) => {
+    res.json({
+      playlist: [
+        {
+          type: 'video',
+          url: 'https://videos.pexels.com/video-files/33909042/14390221_1920_1080_60fps.mp4',
+        },
+        {
+          type: 'image',
+          url: 'https://octopussignage.com/wp-content/uploads/2024/12/DSC01412_square.jpg',
+          duration: 5,
+        },
+        {
+          type: 'video',
+          url: 'https://videos.pexels.com/video-files/5548361/5548361-uhd_2560_1440_25fps.mp4',
+        },
+        {
+          type: 'video',
+          url: 'https://videos.pexels.com/video-files/5548082/5548082-uhd_2560_1440_25fps.mp4',
+        },
+      ],
+    });
   });
 
   app.get('/', (_req: Request, res: Response) => {
