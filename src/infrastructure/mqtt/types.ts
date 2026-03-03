@@ -1,19 +1,9 @@
-export type CommandName =
-  | 'reload_playlist'
-  | 'restart_player'
-  | 'play'
-  | 'pause'
-  | 'set_volume'
-  | 'screenshot';
+import type { Command, CommandName, CommandResultStatus } from '../../domain/command';
 
-export interface IncomingCommand {
-  command: CommandName;
-  correlationId: string;
-  timestamp: number;
-  payload?: Record<string, unknown>;
-}
-
-export type EventStatus = 'success' | 'error';
+// Domain tiplerini burada tekrar export ediyoruz ki mevcut import yolları bozulmasın.
+export type { CommandName };
+export interface IncomingCommand extends Command {}
+export type EventStatus = CommandResultStatus;
 
 export interface OutgoingEvent {
   type: 'command_result' | 'status' | 'heartbeat' | 'log';

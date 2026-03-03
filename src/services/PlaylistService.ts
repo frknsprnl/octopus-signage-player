@@ -1,10 +1,5 @@
 import { EventEmitter } from 'events';
-
-export interface PlaylistItem {
-  type: 'image' | 'video';
-  url: string;
-  duration?: number; // saniye — yalnızca görseller için
-}
+import type { PlaylistItem } from '../domain/playlist';
 
 export declare interface PlaylistService {
   on(event: 'updated', listener: (items: PlaylistItem[]) => void): this;

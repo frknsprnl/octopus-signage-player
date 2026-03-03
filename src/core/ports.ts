@@ -1,5 +1,5 @@
 import type { OutgoingEvent } from '../infrastructure/mqtt/types';
-import type { PlaylistItem } from '../services/PlaylistService';
+import type { PlaylistItem } from '../domain/playlist';
 import type { IncomingCommand } from '../infrastructure/mqtt/types';
 
 // Katmanlar arası bağımlılıkları kırmak için interface tanımları burada.
