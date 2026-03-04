@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="http://yourdomain/Tizen" version="1.0.0" viewmodes="maximized">
+    <tizen:application id="GpW83trh9t.Tizen" package="GpW83trh9t" required_version="10.0"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <icon src="icon.png"/>
+    <name>Tizen</name>
+    <tizen:profile name="tizen"/>
+
+    <!-- Harici ağ erişimi -->
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+
+    <!-- Tüm harici kaynaklara (Railway backend, medya CDN) erişim izni -->
+    <access origin="*" subdomains="true"/>
+</widget>

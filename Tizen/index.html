@@ -68,6 +68,8 @@
   </div>
 
   <script>
+    var BASE_URL = 'https://octopus-signage-player-production.up.railway.app';
+
     // ─── MediaCache: IndexedDB + Blob ────────────────────────────────────────
     // Görsel ve video binary'lerini IndexedDB'de blob olarak saklar.
     // Ağ kesildiğinde bile cached blob'lar üzerinden oynatma devam eder.
@@ -231,7 +233,7 @@
 
     // ─── Server fetch ────────────────────────────────────────────────────────
     function fetchFromServer() {
-      return fetch('/api/playlist')
+      return fetch(BASE_URL + '/api/playlist')
         .then(function (res) {
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
@@ -248,7 +250,7 @@
 
     // ─── MQTT ack ────────────────────────────────────────────────────────────
     function postAck(event) {
-      fetch('/api/ack', {
+      fetch(BASE_URL + '/api/ack', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(event),
@@ -550,7 +552,7 @@
     }
 
     // ─── SSE ─────────────────────────────────────────────────────────────────
-    var es = new EventSource('/events');
+    var es = new EventSource(BASE_URL + '/events');
     es.onopen = function () {
       console.log('[player] SSE connected');
     };
