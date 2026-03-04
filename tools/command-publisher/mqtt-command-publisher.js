@@ -2,12 +2,21 @@ const mqtt = require('mqtt');
 const readline = require('readline');
 
 const DEVICE_ID = 'player-001';
-const BROKER_URL = 'mqtt://localhost:1883';
+/* Local MQTT Broker */
+// const BROKER_URL = 'mqtt://localhost:1883';
+
+/* Production MQTT Broker */
+const BROKER_URL = 'mqtt://turntable.proxy.rlwy.net:41146';
+const BROKER_USERNAME = 'frknsprnl';
+const BROKER_PASSWORD = 'octopus';
 
 const client = mqtt.connect(BROKER_URL, {
   clientId: `publisher-${Date.now()}`,
   clean: true,
   reconnectPeriod: 3000,
+  /* Production MQTT Broker */
+  username: BROKER_USERNAME,
+  password: BROKER_PASSWORD,
 });
 
 const TOPIC = `players/${DEVICE_ID}/commands`;
