@@ -475,6 +475,7 @@ Bu case kapsamında aşağıdaki Tizen emülatör konfigürasyonu ile test ettim
 2. **Tools → Device Manager** → emülatörün `Connected` olduğunu doğrulayın
 3. Device Manager → **Install App** → `dist/Tizen.wgt` dosyasını seçin
 4. Emülatörde uygulama listesinden **Tizen** uygulamasını başlatın
+5. wgt dosyası direkt olarak çalıṣan emulatorun uzerine surukle-birak yapilarak da kurulum tamamlanabilir.
 
 ### Sertifika
 
